@@ -5,24 +5,25 @@
 namespace ApiForTravel.Migrations
 {
     /// <inheritdoc />
-    public partial class username : Migration
+    public partial class likes : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "Username",
-                table: "Users",
-                type: "text",
-                nullable: true);
+            migrationBuilder.AddColumn<int>(
+                name: "LikesCount",
+                table: "Travels",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "Username",
-                table: "Users");
+                name: "LikesCount",
+                table: "Travels");
         }
     }
 }

@@ -5,11 +5,14 @@ using ApiForTravel.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ApiForTravel
@@ -51,7 +54,7 @@ namespace ApiForTravel
                 options.AddPolicy("AllowAllOrigins",
                     builder =>
                     {
-                        builder.WithOrigins("https://guleb23-travelapp-25da.twc1.net", "http://localhost:5173")// Разрешить запросы с любого домена
+                        builder.WithOrigins("https://guleb23-travelapp-6b18.twc1.net", "http://localhost:5173")// Разрешить запросы с любого домена
                                 .AllowAnyMethod() // Разрешить любые HTTP-методы (GET, POST и т.д.)
                                .AllowAnyHeader()
                                .AllowCredentials();  // Разрешить любые заголовки
@@ -74,6 +77,12 @@ namespace ApiForTravel
             var app = builder.Build();
             app.Urls.Add("http://*:5000");
             app.UseCors("AllowAllOrigins");
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(
+                    Path.Combine(Directory.GetCurrentDirectory(), "uploads")),
+                RequestPath = "/uploads",
+            });
 
             // Используем Swagger для удобной отладки и автоматической документации эндпоинтов
             if (app.Environment.IsDevelopment())
@@ -93,7 +102,296 @@ namespace ApiForTravel
                 return ctx.Users.ToList();
             });
 
+            app.MapGet("/api/routes/{userId}", (ApplicationDBContext ctx, int userId) =>
+            {
+                var routes = ctx.Travels.Where( t => t.UserId == userId)
+                    .Include(t => t.Points)          // Включаем точки маршрута
+                    .ThenInclude(p => p.Coordinates)  // Включаем координаты для каждой точки
+                    .Include(t => t.Points)
+                    .ThenInclude(p => p.Photos)       // Включаем фотографии (если нужно)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.Title,
+                        t.Date,
+                        t.UserId,
+                        Points = t.Points.Select(p => new
+                        {
+                            p.Id,
+                            p.Name,
+                            p.Address,
+                            p.Type,
+                            p.DepartureTime,
+                            Coordinates = new
+                            {
+                                p.Coordinates.Id,
+                                p.Coordinates.Lat,
+                                p.Coordinates.Lon
+                            },
+                            Photos = p.Photos.Select(ph => new
+                            {
+                                ph.Id,
+                                ph.FilePath
+                            })
+                        })
+                    })
+                    .ToList();
 
+                return Results.Ok(routes);
+            });
+
+            app.MapGet("/api/travel/{travelId}", (ApplicationDBContext ctx, int travelId) =>
+            {
+                return ctx.Travels.Where(t => t.Id == travelId).ToList();
+            });
+
+            app.MapGet("/api/points/{travelId}", (ApplicationDBContext ctx, int travelId) =>
+            {
+                return ctx.TravelPoints.Where(p => p.TravelId == travelId)
+                .Include(p => p.Coordinates)
+                .Select(p => new
+                {
+                    p.Id,
+                            p.Name,
+                            p.Address,
+                            p.Type,
+                            
+                            Coordinates = new
+                            {
+                                p.Coordinates.Id,
+                                p.Coordinates.Lat,
+                                p.Coordinates.Lon
+                            },
+                            Photos = p.Photos.Select(ph => new
+                            {
+                                ph.Id,
+                                ph.FilePath
+                            })
+
+                });
+            });
+
+            app.MapDelete("/api/routes/{travelId}", (ApplicationDBContext ctx, int travelId) =>
+            {
+                var currentTravel = ctx.Travels.FirstOrDefault(t => t.Id == travelId);
+                if(currentTravel != null)
+                {
+                    ctx.Travels.Remove(currentTravel);
+                    ctx.SaveChanges();
+                    return Results.Ok();
+                }
+                else
+                {
+                    return Results.NotFound();
+                }
+               
+            });
+            app.MapGet("/api/feed", async (
+    ApplicationDBContext db,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] string search = "",
+    [FromQuery] string tag = "") =>
+            {
+                // Базовый запрос
+                IQueryable<TravelModel> query = db.Travels
+                    .Include(t => t.User)
+                    .Include(t => t.Points)
+                        .ThenInclude(p => p.Coordinates)
+                    .Include(t => t.Points)
+                        .ThenInclude(p => p.Photos)
+                    .Where(t => t.Tags != null && t.Tags.Any()); // Только путешествия с тегами
+
+                // Фильтрация по поисковому запросу
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(t => t.Title.Contains(search));
+                }
+
+                // Фильтрация по тегу
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    query = query.Where(t => t.Tags.Contains(tag));
+                }
+
+                // Получаем общее количество для пагинации
+                var totalCount = await query.CountAsync();
+
+                // Получаем данные с пагинацией
+                var travels = await query
+                    .OrderByDescending(t => t.Date)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.Title,
+                        t.Date,
+                        User = new { t.User.Id, t.User.Username },
+                        Points = t.Points.Select(p => new
+                        {
+                            p.Id,
+                            p.Name,
+                            p.Address,
+                            p.Type,
+                            Coordinates = new { p.Coordinates.Lat, p.Coordinates.Lon },
+                            Photos = p.Photos.Select(ph => new { ph.Id, ph.FilePath })
+                        }),
+                        Tags = t.Tags
+                    })
+                    .ToListAsync();
+
+                return Results.Ok(new
+                {
+                    Items = travels,
+                    TotalCount = totalCount,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+                });
+            });
+            app.MapGet("/api/tags", async (ApplicationDBContext db) =>
+            {
+                var tags = await db.Travels
+                    .Where(t => t.Tags != null && t.Tags.Any())
+                    .SelectMany(t => t.Tags)
+                    .Distinct()
+                    .ToListAsync();
+
+                return Results.Ok(tags);
+            });
+            app.MapPost("/api/posts/{postId}/like", async (int postId, ApplicationDBContext db) =>
+            {
+                var travel = await db.Travels.FindAsync(postId);
+                if (travel == null) return Results.NotFound();
+
+                // Простая реализация - в реальном приложении нужно учитывать пользователя
+                travel.LikesCount++;
+                await db.SaveChangesAsync();
+
+                return Results.Ok(new { LikesCount = travel.LikesCount });
+            });
+
+            app.MapDelete("/api/posts/{postId}/like", async (int postId, ApplicationDBContext db) =>
+            {
+                var travel = await db.Travels.FindAsync(postId);
+                if (travel == null) return Results.NotFound();
+
+                // Простая реализация
+                travel.LikesCount = Math.Max(0, travel.LikesCount - 1);
+                await db.SaveChangesAsync();
+
+                return Results.Ok(new { LikesCount = travel.LikesCount });
+            });
+            app.MapPost("/api/users/{userId}/travels", async (int userId,[FromBody] TravelCreateRequest request, ApplicationDBContext db,IWebHostEnvironment env) =>
+            {
+                // 1. Проверка пользователя
+                var user = await db.Users.FindAsync(userId);
+                if (user == null)
+                    return Results.NotFound($"User with id {userId} not found");
+
+                // 2. Валидация
+                if (request.Points == null || !request.Points.Any())
+                    return Results.BadRequest("At least one point is required");
+
+                // 3. Создаем папку uploads если её нет
+                var uploadsPath = Path.Combine(env.ContentRootPath, "uploads");
+                if (!Directory.Exists(uploadsPath))
+                    Directory.CreateDirectory(uploadsPath);
+
+                // 4. Создание объекта Travel
+                var travel = new TravelModel
+                {
+                    Title = request.Title != null ? request.Title :  $"поездка {request.Date}",
+                    UserId = userId,
+                    Date = DateTimeOffset.Parse(request.Date).UtcDateTime, // Исправленная строка
+                    Points = new List<TravelPoint>(),
+                    Tags = null
+                };
+
+                // 5. Обработка точек маршрута
+                foreach (var pointRequest in request.Points)
+                {
+                    // Парсим время с проверкой на null/пустую строку
+                    TimeSpan? departureTime = null;
+                    if (!string.IsNullOrEmpty(pointRequest.DepartureTime))
+                    {
+                        if (!TimeSpan.TryParse(pointRequest.DepartureTime, out var parsedTime))
+                            return Results.BadRequest($"Invalid departure time format: {pointRequest.DepartureTime}");
+
+                        departureTime = parsedTime;
+                    }
+
+                    var travelPoint = new TravelPoint
+                    {
+                        Name = pointRequest.Name,
+                        Address = pointRequest.Address,
+                        Coordinates = new Coordinates
+                        {
+                            Lat = pointRequest.Coordinates.Lat,
+                            Lon = pointRequest.Coordinates.Lon
+                        },
+                        Type = pointRequest.Type ?? "attraction",
+                        DepartureTime = departureTime.HasValue ? departureTime.Value : null, // Сохраняем как строку
+                        Photos = new List<Photo>()
+                    };
+
+                    // 6. Обработка фотографий
+                    if (pointRequest.Photos != null && pointRequest.Photos.Any())
+                    {
+                        foreach (var photoRequest in pointRequest.Photos)
+                        {
+                            try
+                            {
+                                if (string.IsNullOrEmpty(photoRequest.Base64Content))
+                                    continue;
+
+                                var base64Data = photoRequest.Base64Content.Split(',').Last();
+                                var bytes = Convert.FromBase64String(base64Data);
+
+                                // Проверка размера файла (например, до 5MB)
+                                if (bytes.Length > 5 * 1024 * 1024)
+                                    return Results.BadRequest($"Photo {photoRequest.FileName} exceeds 5MB limit");
+
+                                var extension = Path.GetExtension(photoRequest.FileName) ?? ".jpg";
+                                var fileName = $"{Guid.NewGuid()}{extension}";
+                                var filePath = Path.Combine(uploadsPath, fileName);
+
+                                await File.WriteAllBytesAsync(filePath, bytes);
+
+                                travelPoint.Photos.Add(new Photo
+                                {
+                                    FilePath = Path.Combine("uploads", fileName),
+                                });
+                            }
+                            catch (FormatException)
+                            {
+                                return Results.BadRequest("Invalid base64 format for photo");
+                            }
+                        }
+                    }
+
+                    travel.Points.Add(travelPoint);
+                }
+
+                // 7. Сохранение в базу
+                db.Travels.Add(travel);
+                await db.SaveChangesAsync();
+
+                // 8. Возврат результата
+                return Results.Ok(travel);
+            });
+            app.MapPut("/api/travels/{travelId}/share", async (int travelId, [FromBody] ShareRequestModel request, ApplicationDBContext db) =>
+            {
+                var travel = await db.Travels.FindAsync(travelId);
+                if (travel == null) return Results.NotFound();
+
+                // Обновляем теги (если tags null, путешествие не будет отображаться в ленте)
+                travel.Tags = request.Tags ?? new List<string>();
+
+                await db.SaveChangesAsync();
+                return Results.Ok();
+            });
             app.MapPost("/api/register", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService) =>
             {
                 // Проверка, существует ли пользователь с таким email
@@ -107,7 +405,9 @@ namespace ApiForTravel
                 var newUser = new UserModel()
                 {
                     Email = user.Email,
-                    RefreshToken = "0"
+                    RefreshToken = "0",
+                    Username = user.Username
+
                      // Хеширование пароля
                 };
                 newUser.Password = hasher.HashPassword(newUser, user.Password);
@@ -142,8 +442,10 @@ namespace ApiForTravel
                 // Возврат accessToken и email
                 var JsonObject = new JsonObject()
                 {
+                    ["Id"] = newUser.Id,
                     ["AccessToken"] = accessToken,
-                    ["Email"] = newUser.Email
+                    ["Email"] = newUser.Email,
+                    ["Username"] = newUser.Username
                 };
 
                 return Results.Ok(JsonObject);
@@ -180,8 +482,10 @@ namespace ApiForTravel
                         // Возвращаем токены клиенту
                         var JsonObject = new JsonObject()
                         {
+                            ["Id"] = storedUser.Id,
                             ["AccessToken"] = accessToken,
-                            ["Email"] = storedUser.Email
+                            ["Email"] = storedUser.Email,
+                            ["Username"] = storedUser.Username
                         };
 
                         return Results.Ok(JsonObject);
@@ -260,8 +564,10 @@ namespace ApiForTravel
 
                 var test = new Test()
                 {
+                    Id = storedUser.Id,
                     AccessToken = newAccessToken,
-                    Email = storedUser.Email
+                    Email = storedUser.Email,
+                    Username = storedUser.Username
                 };
                 return Results.Ok(test);
             });
@@ -314,8 +620,10 @@ namespace ApiForTravel
 
                         var JsonObject = new JsonObject()
                         {
+                            ["Id"] = user.Id,
                             ["RefreshToken"] = user.RefreshToken,
-                            ["Email"] = user.Email
+                            ["Email"] = user.Email,
+                            ["Username"] = user.Username
                         };
 
                         // 6. Возврат данных пользователя
@@ -333,8 +641,212 @@ namespace ApiForTravel
                     return Results.Unauthorized();
                 }
             });
+            app.MapPatch("/api/travels/{travelId}", async (
+    int travelId,
+    [FromBody] TravelUpdateRequest request,
+    ApplicationDBContext db,
+    IWebHostEnvironment env) =>
+            {
+                try
+                {
+                    // 1. Находим существующее путешествие
+                    var travel = await db.Travels
+                        .Include(t => t.Points)
+                            .ThenInclude(p => p.Coordinates)
+                        .Include(t => t.Points)
+                            .ThenInclude(p => p.Photos)
+                        .FirstOrDefaultAsync(t => t.Id == travelId);
+
+                    if (travel == null)
+                        return Results.NotFound($"Travel with id {travelId} not found");
+
+                    // 2. Обновляем основные данные
+                    if (!string.IsNullOrEmpty(request.Title))
+                        travel.Title = request.Title;
+
+                    if (!string.IsNullOrEmpty(request.Date))
+                        travel.Date = DateTimeOffset.Parse(request.Date).UtcDateTime;
+
+                    // 3. Обработка тегов (если они есть в запросе)
+                    if (request.Tags != null)
+                        travel.Tags = request.Tags;
+
+                    // 4. Обработка точек маршрута (если они есть в запросе)
+                    if (request.Points != null)
+                    {
+                        // Удаляем существующие точки, которых нет в новом запросе
+                        var pointsToRemove = travel.Points
+                            .Where(existingPoint => !request.Points.Any(newPoint => newPoint.Id == existingPoint.Id))
+                            .ToList();
+
+                        foreach (var point in pointsToRemove)
+                        {
+                            // Удаляем связанные фотографии из файловой системы
+                            foreach (var photo in point.Photos)
+                            {
+                                var filePath = Path.Combine(env.ContentRootPath, photo.FilePath);
+                                if (File.Exists(filePath))
+                                    File.Delete(filePath);
+                            }
+                            db.TravelPoints.Remove(point);
+                        }
+
+                        // Обновляем существующие или добавляем новые точки
+                        foreach (var pointRequest in request.Points)
+                        {
+                            // Парсим время с проверкой на null/пустую строку
+                            TimeSpan? departureTime = null;
+                            if (!string.IsNullOrEmpty(pointRequest.DepartureTime))
+                            {
+                                if (!TimeSpan.TryParse(pointRequest.DepartureTime, out var parsedTime))
+                                    return Results.BadRequest($"Invalid departure time format: {pointRequest.DepartureTime}");
+                                departureTime = parsedTime;
+                            }
+
+                            var existingPoint = travel.Points.FirstOrDefault(p => p.Id == pointRequest.Id);
+
+                            if (existingPoint != null)
+                            {
+                                // Обновляем существующую точку
+                                existingPoint.Name = pointRequest.Name ?? existingPoint.Name;
+                                existingPoint.Address = pointRequest.Address ?? existingPoint.Address;
+                                existingPoint.Type = pointRequest.Type ?? existingPoint.Type;
+                                existingPoint.DepartureTime = departureTime ?? existingPoint.DepartureTime;
+
+                                // Обновляем координаты
+                                if (pointRequest.Coordinates != null)
+                                {
+                                    existingPoint.Coordinates.Lat = pointRequest.Coordinates.Lat;
+                                    existingPoint.Coordinates.Lon = pointRequest.Coordinates.Lon;
+                                }
+
+                                // Обработка фотографий
+                                if (pointRequest.Photos != null)
+                                {
+                                    // Удаляем фотографии, которые были удалены на клиенте
+                                    var photosToRemove = existingPoint.Photos
+                                        .Where(existingPhoto => !pointRequest.Photos.Any(newPhoto => newPhoto.Id == existingPhoto.Id))
+                                        .ToList();
+
+                                    foreach (var photo in photosToRemove)
+                                    {
+                                        var filePath = Path.Combine(env.ContentRootPath, photo.FilePath);
+                                        if (File.Exists(filePath))
+                                            File.Delete(filePath);
+                                        db.PointPhotos.Remove(photo);
+                                    }
+
+                                    // Добавляем новые фотографии
+                                    foreach (var photoRequest in pointRequest.Photos.Where(p => p.Id == 0))
+                                    {
+                                        if (string.IsNullOrEmpty(photoRequest.Base64Content))
+                                            continue;
+
+                                        var base64Data = photoRequest.Base64Content.Split(',').Last();
+                                        var bytes = Convert.FromBase64String(base64Data);
+
+                                        // Проверка размера файла
+                                        if (bytes.Length > 5 * 1024 * 1024)
+                                            return Results.BadRequest($"Photo {photoRequest.FileName} exceeds 5MB limit");
+
+                                        var extension = Path.GetExtension(photoRequest.FileName) ?? ".jpg";
+                                        var fileName = $"{Guid.NewGuid()}{extension}";
+                                        var filePath = Path.Combine(env.ContentRootPath, "uploads", fileName);
+
+                                        await File.WriteAllBytesAsync(filePath, bytes);
+
+                                        existingPoint.Photos.Add(new Photo
+                                        {
+                                            FilePath = Path.Combine("uploads", fileName),
+                                        });
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Добавляем новую точку
+                                var newPoint = new TravelPoint
+                                {
+                                    Name = pointRequest.Name,
+                                    Address = pointRequest.Address,
+                                    Coordinates = new Coordinates
+                                    {
+                                        Lat = pointRequest.Coordinates.Lat,
+                                        Lon = pointRequest.Coordinates.Lon
+                                    },
+                                    Type = pointRequest.Type ?? "attraction",
+                                    DepartureTime = departureTime,
+                                    Photos = new List<Photo>()
+                                };
+
+                                // Обработка фотографий для новой точки
+                                if (pointRequest.Photos != null)
+                                {
+                                    foreach (var photoRequest in pointRequest.Photos)
+                                    {
+                                        if (string.IsNullOrEmpty(photoRequest.Base64Content))
+                                            continue;
+
+                                        var base64Data = photoRequest.Base64Content.Split(',').Last();
+                                        var bytes = Convert.FromBase64String(base64Data);
+
+                                        if (bytes.Length > 5 * 1024 * 1024)
+                                            return Results.BadRequest($"Photo {photoRequest.FileName} exceeds 5MB limit");
+
+                                        var extension = Path.GetExtension(photoRequest.FileName) ?? ".jpg";
+                                        var fileName = $"{Guid.NewGuid()}{extension}";
+                                        var filePath = Path.Combine(env.ContentRootPath, "uploads", fileName);
+
+                                        await File.WriteAllBytesAsync(filePath, bytes);
+
+                                        newPoint.Photos.Add(new Photo
+                                        {
+                                            FilePath = Path.Combine("uploads", fileName),
+                                        });
+                                    }
+                                }
+
+                                travel.Points.Add(newPoint);
+                            }
+                        }
+                    }
+
+                    // 5. Сохраняем изменения
+                    await db.SaveChangesAsync();
+
+                    // 6. Возвращаем обновленное путешествие
+                    return Results.Ok(new
+                    {
+                        travel.Id,
+                        travel.Title,
+                        travel.Date,
+                        Points = travel.Points.Select(p => new
+                        {
+                            p.Id,
+                            p.Name,
+                            p.Address,
+                            p.Type,
+                            Coordinates = new { p.Coordinates.Lat, p.Coordinates.Lon },
+                            Photos = p.Photos.Select(ph => new { ph.Id, ph.FilePath })
+                        }),
+                        Tags = travel.Tags
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"An error occurred: {ex.Message}");
+                }
+            });
 
             app.Run();
         }
     }
+    
+
+    
+
+    
+
+    
 }
+
