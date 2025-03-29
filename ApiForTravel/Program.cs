@@ -23,7 +23,7 @@ namespace ApiForTravel
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+            //Добавляем аутентификацию по JWT токену
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -48,7 +48,7 @@ namespace ApiForTravel
             builder.Services.AddSwaggerGen();
 
 
-
+            //Настроиваем CORS, чтобы можно было получать запросы с фронта
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAllOrigins",
@@ -69,14 +69,19 @@ namespace ApiForTravel
                 options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
             });
 
-
+            //Подключение класса для создания токена
             builder.Services.AddScoped<TokenService>();
+            //Подключение класса для хеширования и обратного кодирования пароля
             builder.Services.AddScoped<PasswordHasher>();
+            //Подключение класса регитсрации
             builder.Services.AddScoped<AuthService>();
 
             var app = builder.Build();
+            //Настроиваем прослушиваемый порт(только для хостинга, на локалке убрать)
             app.Urls.Add("http://*:5000");
+            //Подключаем созданные корсы
             app.UseCors("AllowAllOrigins");
+            //Добавлем возможность доступа к фотографиям по URL
             app.UseStaticFiles(new StaticFileOptions
             {
                 FileProvider = new PhysicalFileProvider(
@@ -96,12 +101,13 @@ namespace ApiForTravel
             app.UseAuthorization();
 
 
-
+            //Получение всех пользователей
             app.MapGet("/api/users", (ApplicationDBContext ctx) =>
             {
                 return ctx.Users.ToList();
             });
 
+            //Получение машршрута определенного пользователя, включающий все связанные таблицы
             app.MapGet("/api/routes/{userId}", (ApplicationDBContext ctx, int userId) =>
             {
                 var routes = ctx.Travels.Where( t => t.UserId == userId)
@@ -140,11 +146,13 @@ namespace ApiForTravel
                 return Results.Ok(routes);
             });
 
+            //Получение машршрута определенного пользователя без связанных таблиц
             app.MapGet("/api/travel/{travelId}", (ApplicationDBContext ctx, int travelId) =>
             {
                 return ctx.Travels.Where(t => t.Id == travelId).ToList();
             });
 
+            //Получение точек определенного маршрута
             app.MapGet("/api/points/{travelId}", (ApplicationDBContext ctx, int travelId) =>
             {
                 return ctx.TravelPoints.Where(p => p.TravelId == travelId)
@@ -171,6 +179,7 @@ namespace ApiForTravel
                 });
             });
 
+            //Удаление точек определенного маршрута
             app.MapDelete("/api/routes/{travelId}", (ApplicationDBContext ctx, int travelId) =>
             {
                 var currentTravel = ctx.Travels.FirstOrDefault(t => t.Id == travelId);
@@ -186,12 +195,9 @@ namespace ApiForTravel
                 }
                
             });
-            app.MapGet("/api/feed", async (
-    ApplicationDBContext db,
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 10,
-    [FromQuery] string search = "",
-    [FromQuery] string tag = "") =>
+
+            //Получение данных о постах, по страницам
+            app.MapGet("/api/feed", async ( ApplicationDBContext db, [FromQuery] int page = 1,[FromQuery] int pageSize = 10,[FromQuery] string search = "",[FromQuery] string tag = "") =>
             {
                 // Базовый запрос
                 IQueryable<TravelModel> query = db.Travels
@@ -250,6 +256,8 @@ namespace ApiForTravel
                     TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
                 });
             });
+
+            //Получение данных о тегах
             app.MapGet("/api/tags", async (ApplicationDBContext db) =>
             {
                 var tags = await db.Travels
@@ -271,7 +279,6 @@ namespace ApiForTravel
 
                 return Results.Ok(new { LikesCount = travel.LikesCount });
             });
-
             app.MapDelete("/api/posts/{postId}/like", async (int postId, ApplicationDBContext db) =>
             {
                 var travel = await db.Travels.FindAsync(postId);
@@ -283,6 +290,7 @@ namespace ApiForTravel
 
                 return Results.Ok(new { LikesCount = travel.LikesCount });
             });
+            //Создание нового путешествия
             app.MapPost("/api/users/{userId}/travels", async (int userId,[FromBody] TravelCreateRequest request, ApplicationDBContext db,IWebHostEnvironment env) =>
             {
                 // 1. Проверка пользователя
@@ -381,6 +389,7 @@ namespace ApiForTravel
                 // 8. Возврат результата
                 return Results.Ok(travel);
             });
+            //Добаление тега => пост в ленту
             app.MapPut("/api/travels/{travelId}/share", async (int travelId, [FromBody] ShareRequestModel request, ApplicationDBContext db) =>
             {
                 var travel = await db.Travels.FindAsync(travelId);
@@ -392,6 +401,7 @@ namespace ApiForTravel
                 await db.SaveChangesAsync();
                 return Results.Ok();
             });
+            //Регитрация
             app.MapPost("/api/register", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService) =>
             {
                 // Проверка, существует ли пользователь с таким email
@@ -450,6 +460,7 @@ namespace ApiForTravel
 
                 return Results.Ok(JsonObject);
             });
+            //Авторизация
             app.MapPost("/api/login", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService, AuthService _authService) =>
             {
                 var storedUser = ctx.Users.FirstOrDefault(u => u.Email == user.Email);
@@ -507,6 +518,7 @@ namespace ApiForTravel
 
 
             });
+            //Получиние рефреш токена и проверка
             app.MapPost("/api/refresh", async (HttpContext context, ApplicationDBContext ctx, TokenService tokenService) =>
             {
                 // 1. Извлечение refreshToken из cookie
@@ -571,6 +583,7 @@ namespace ApiForTravel
                 };
                 return Results.Ok(test);
             });
+            //Получиние ацес токена и проверка
             app.MapPost("/api/validate-token", async (HttpContext context, ApplicationDBContext ctx) =>
             {
                 // 1. Получаем токен из заголовка Authorization
@@ -641,11 +654,8 @@ namespace ApiForTravel
                     return Results.Unauthorized();
                 }
             });
-            app.MapPatch("/api/travels/{travelId}", async (
-    int travelId,
-    [FromBody] TravelUpdateRequest request,
-    ApplicationDBContext db,
-    IWebHostEnvironment env) =>
+            //Изменение путешетсвия
+            app.MapPatch("/api/travels/{travelId}", async (int travelId,[FromBody] TravelUpdateRequest request, ApplicationDBContext db,IWebHostEnvironment env) =>
             {
                 try
                 {

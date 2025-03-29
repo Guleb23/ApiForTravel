@@ -11,11 +11,13 @@ namespace ApiForTravel.Db
             
         }
 
+
+        // Настройка связей в таблицах
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Настройка таблицы User
+            
             modelBuilder.Entity<UserModel>()
             .HasMany(u => u.Travels)
             .WithOne(t => t.User)
@@ -42,6 +44,7 @@ namespace ApiForTravel.Db
                 .OnDelete(DeleteBehavior.Cascade);
         }
 
+        //Создания таблиц с помощью моделей
         public DbSet<UserModel> Users { get; set; }
         public DbSet<TravelModel> Travels { get; set; }
         public DbSet<TravelPoint> TravelPoints { get; set; }
