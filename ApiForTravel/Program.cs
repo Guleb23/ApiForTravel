@@ -78,7 +78,7 @@ namespace ApiForTravel
 
             var app = builder.Build();
             //Настроиваем прослушиваемый порт(только для хостинга, на локалке убрать)
-            //app.Urls.Add("http://*:5000");
+            app.Urls.Add("http://*:5000");
             //Подключаем созданные корсы
             app.UseCors("AllowAllOrigins");
             //Добавлем возможность доступа к фотографиям по URL
