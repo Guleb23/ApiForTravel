@@ -847,6 +847,33 @@ namespace ApiForTravel
                     return Results.Problem($"An error occurred: {ex.Message}");
                 }
             });
+            app.MapDelete("/api/points/{pointId}/photos/{photoId}", async (int pointId, int photoId, ApplicationDBContext context, IWebHostEnvironment env) =>
+            {
+                // Находим фото в базе данных
+                var photo = await context.PointPhotos
+                    .FirstOrDefaultAsync(p => p.Id == photoId && p.TravelPointId == pointId);
+
+                if (photo == null)
+                {
+                    return Results.NotFound(new { Success = false, Message = "Фото не найдено" });
+                }
+
+                // Удаляем физический файл
+                if (!string.IsNullOrEmpty(photo.FilePath))
+                {
+                    var filePath = photo.FilePath;
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        System.IO.File.Delete(filePath);
+                    }
+                }
+
+                // Удаляем запись из базы
+                context.PointPhotos.Remove(photo);
+                await context.SaveChangesAsync();
+
+                return Results.Ok(new { Success = true, DeletedPhotoId = photoId });
+            });
 
             app.Run();
         }
