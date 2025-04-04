@@ -54,7 +54,7 @@ namespace ApiForTravel
                 options.AddPolicy("AllowAllOrigins",
                     builder =>
                     {
-                        builder.WithOrigins("https://guleb23-travelapp-6b18.twc1.net", "http://localhost:5173")// Разрешить запросы с любого домена
+                        builder.WithOrigins("https://guleb23-travelapp-6b18.twc1.net", "https://travel-app-ten-wine.vercel.app")// Разрешить запросы с любого домена
                                 .AllowAnyMethod() // Разрешить любые HTTP-методы (GET, POST и т.д.)
                                .AllowAnyHeader()
                                .AllowCredentials();  // Разрешить любые заголовки
@@ -78,7 +78,7 @@ namespace ApiForTravel
 
             var app = builder.Build();
             //Настроиваем прослушиваемый порт(только для хостинга, на локалке убрать)
-            app.Urls.Add("http://*:5000");
+            //app.Urls.Add("http://*:5000");
             //Подключаем созданные корсы
             app.UseCors("AllowAllOrigins");
             //Добавлем возможность доступа к фотографиям по URL
