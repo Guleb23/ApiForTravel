@@ -163,6 +163,7 @@ namespace ApiForTravel
                             p.Name,
                             p.Address,
                             p.Type,
+                            p.note,
                             
                             Coordinates = new
                             {
