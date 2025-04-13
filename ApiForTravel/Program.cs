@@ -240,6 +240,7 @@ namespace ApiForTravel
                             p.Id,
                             p.Name,
                             p.Address,
+                            p.note,
                             p.Type,
                             Coordinates = new { p.Coordinates.Lat, p.Coordinates.Lon },
                             Photos = p.Photos.Select(ph => new { ph.Id, ph.FilePath })
