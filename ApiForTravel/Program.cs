@@ -312,6 +312,7 @@ namespace ApiForTravel
                 {
                     Title = request.Title != null ? request.Title :  $"поездка {request.Date}",
                     UserId = userId,
+                   
                     Date = DateTimeOffset.Parse(request.Date).UtcDateTime, // Исправленная строка
                     Points = new List<TravelPoint>(),
                     Tags = null
@@ -341,6 +342,7 @@ namespace ApiForTravel
                         },
                         Type = pointRequest.Type ?? "attraction",
                         DepartureTime = departureTime.HasValue ? departureTime.Value : null, // Сохраняем как строку
+                        note = pointRequest.note,
                         Photos = new List<Photo>()
                     };
 
@@ -722,6 +724,7 @@ namespace ApiForTravel
                                 existingPoint.Address = pointRequest.Address ?? existingPoint.Address;
                                 existingPoint.Type = pointRequest.Type ?? existingPoint.Type;
                                 existingPoint.DepartureTime = departureTime ?? existingPoint.DepartureTime;
+                                existingPoint.note = pointRequest.note ?? existingPoint.note;
 
                                 // Обновляем координаты
                                 if (pointRequest.Coordinates != null)
@@ -786,6 +789,7 @@ namespace ApiForTravel
                                     },
                                     Type = pointRequest.Type ?? "attraction",
                                     DepartureTime = departureTime,
+                                    note = pointRequest.note,
                                     Photos = new List<Photo>()
                                 };
 

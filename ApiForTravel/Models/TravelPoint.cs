@@ -18,6 +18,7 @@ namespace ApiForTravel.Models
         public string Type { get; set; } // "attraction", "restaurant", "shopping"
         public double? Duration { get; set; } // в секундах
         public List<Photo> Photos { get; set; } = new();
+        public string note { get; set; } = string.Empty;
 
         // Внешний ключ
         public int TravelId { get; set; }
