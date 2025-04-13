@@ -197,7 +197,7 @@ namespace ApiForTravel
             });
 
             //Получение данных о постах, по страницам
-            app.MapGet("/api/feed", async ( ApplicationDBContext db, [FromQuery] int page = 1,[FromQuery] int pageSize = 10,[FromQuery] string search = "",[FromQuery] string tag = "") =>
+            app.MapGet("/api/feed", async (ApplicationDBContext db, [FromQuery] int page = 1, [FromQuery] int pageSize = 5, [FromQuery] string search = "", [FromQuery] string tag = "") =>
             {
                 // Базовый запрос
                 IQueryable<TravelModel> query = db.Travels
