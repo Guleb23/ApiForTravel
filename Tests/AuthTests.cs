@@ -81,7 +81,7 @@ namespace Tests
             var registerRequest = new
             {
                 Email = "login@example.com",
-                Password = "Test123!",
+                Password = "Test12312",
                 Username = "loginuser"
             };
 
@@ -90,7 +90,7 @@ namespace Tests
             var loginRequest = new
             {
                 Email = "login@example.com",
-                Password = "Test123!"
+                Password = "Test12312"
             };
 
             // Act
@@ -133,6 +133,8 @@ namespace Tests
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         }
+
+
 
         [Fact]
         public async Task Login_NonExistingUser_ReturnsNotFound()

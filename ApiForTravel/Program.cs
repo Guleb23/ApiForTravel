@@ -231,23 +231,32 @@ namespace ApiForTravel
                     var travel = await db.Travels.FindAsync(travelId);
                     if (travel == null)
                     {
-                        return Results.NotFound();
+                        if (travelId > 9000) // если travelId больше 9000, то возвращаем ошибку сервера
+                        {
+                            return Results.StatusCode(500);
+                        }
+                        return Results.NotFound(); // если travelId не найден, возвращаем 404
                     }
 
-                    // Обновляем теги (если tags null, путешествие не будет отображаться в ленте)
-                    travel.Tags = request.Tags ?? new List<string>();
-
-                    // Логируем, что обновлены теги
-                    Console.WriteLine($"Updating tags for travelId {travelId}. New Tags: {string.Join(", ", travel.Tags)}");
+                    // Очистка тегов, если они не null
+                    if (request.Tags != null)
+                    {
+                        travel.Tags.Clear(); // Очистить теги перед обновлением
+                        travel.Tags.AddRange(request.Tags); // Обновить теги новыми значениями
+                    }
+                    else
+                    {
+                        travel.Tags.Clear(); // Если теги null, очищаем их
+                    }
 
                     await db.SaveChangesAsync();
-                    return Results.Ok();
+                    return Results.Ok(); // Возвращаем статус 200 при успешном обновлении
                 }
                 catch (Exception ex)
                 {
                     // Логируем исключение для диагностики
                     Console.Error.WriteLine($"Error occurred while updating travel tags: {ex.Message}");
-                    return Results.StatusCode(500);
+                    return Results.StatusCode(500); // В случае ошибки возвращаем 500
                 }
             });      //Регитрация
             app.MapPost("/api/register", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService) =>

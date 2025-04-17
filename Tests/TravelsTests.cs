@@ -170,7 +170,100 @@ namespace Tests
             content.Should().Contain("Invalid departure time format");
         }
 
-        // Дополнительный метод для проверки успешного ответа
+        [Fact]
+        public async Task GetRoutes_ByUserId_ReturnsRoutes()
+        {
+            // Arrange: добавим тестовый маршрут вручную
+            var travel = new TravelModel
+            {
+                Title = "Sample Travel",
+                Date = DateTime.UtcNow,
+                UserId = _testUserId,
+                Points = new List<TravelPoint>
+        {
+            new TravelPoint
+            {
+                Name = "Test Point",
+                Address = "Test Address",
+                Type = "attraction",
+                Coordinates = new Coordinates { Lat = 10.1234, Lon = 20.5678 },
+                Photos = new List<Photo>
+                {
+                    new Photo { FilePath = "uploads/test.jpg" }
+                }
+            }
+        }
+            };
+
+            _dbContext.Travels.Add(travel);
+            await _dbContext.SaveChangesAsync();
+
+            // Act
+            var response = await _client.GetAsync($"/api/routes/{_testUserId}");
+
+            // Assert
+            await AssertSuccessResponse(response);
+            var json = await response.Content.ReadFromJsonAsync<JsonArray>();
+            json.Should().NotBeNullOrEmpty();
+            json[0]["Title"]!.ToString().Should().Be("Sample Travel");
+        }
+
+        [Fact]
+        public async Task GetTravel_ById_ReturnsTravel()
+        {
+            var travel = new TravelModel
+            {
+                Title = "Specific Travel",
+                Date = DateTime.UtcNow,
+                UserId = _testUserId
+            };
+            _dbContext.Travels.Add(travel);
+            await _dbContext.SaveChangesAsync();
+
+            // Act
+            var response = await _client.GetAsync($"/api/travel/{travel.Id}");
+
+            // Assert
+            await AssertSuccessResponse(response);
+            var json = await response.Content.ReadFromJsonAsync<JsonArray>();
+            json.Should().ContainSingle();
+            json[0]["Title"]!.ToString().Should().Be("Specific Travel");
+        }
+
+        [Fact]
+        public async Task GetPoints_ByTravelId_ReturnsPoints()
+        {
+            var travel = new TravelModel
+            {
+                Title = "With Points",
+                Date = DateTime.UtcNow,
+                UserId = _testUserId,
+                Points = new List<TravelPoint>
+        {
+            new TravelPoint
+            {
+                Name = "Point A",
+                Address = "Somewhere",
+                Coordinates = new Coordinates { Lat = 1.1, Lon = 2.2 },
+                Type = "attraction",
+                Photos = new List<Photo>()
+            }
+        }
+            };
+            _dbContext.Travels.Add(travel);
+            await _dbContext.SaveChangesAsync();
+
+            // Act
+            var response = await _client.GetAsync($"/api/points/{travel.Id}");
+
+            // Assert
+            await AssertSuccessResponse(response);
+            var points = await response.Content.ReadFromJsonAsync<JsonArray>();
+            points.Should().ContainSingle();
+            points[0]["Name"]!.ToString().Should().Be("Point A");
+        }
+
+        
         private async Task AssertSuccessResponse(HttpResponseMessage response)
         {
             if (!response.IsSuccessStatusCode)
