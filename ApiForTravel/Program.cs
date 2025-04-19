@@ -228,37 +228,42 @@ namespace ApiForTravel
             {
                 try
                 {
-                    var travel = await db.Travels.FindAsync(travelId);
+                    var travel = await db.Travels
+                        .Include(t => t.Tags) // Важно: загружаем связанные теги
+                        .FirstOrDefaultAsync(t => t.Id == travelId);
+
                     if (travel == null)
                     {
-                        if (travelId > 9000) // если travelId больше 9000, то возвращаем ошибку сервера
+                        if (travelId > 9000)
                         {
                             return Results.StatusCode(500);
                         }
-                        return Results.NotFound(); // если travelId не найден, возвращаем 404
+                        return Results.NotFound();
                     }
 
-                    // Очистка тегов, если они не null
-                    if (request.Tags != null)
+                    // Инициализируем коллекцию Tags, если она null
+                    if (travel.Tags == null)
                     {
-                        travel.Tags.Clear(); // Очистить теги перед обновлением
-                        travel.Tags.AddRange(request.Tags); // Обновить теги новыми значениями
+                        travel.Tags = new List<string>(); 
                     }
-                    else
+
+                    // Очистка и обновление тегов
+                    travel.Tags.Clear();
+
+                    if (request.Tags != null && request.Tags.Any())
                     {
-                        travel.Tags.Clear(); // Если теги null, очищаем их
+                        travel.Tags.AddRange(request.Tags);
                     }
 
                     await db.SaveChangesAsync();
-                    return Results.Ok(); // Возвращаем статус 200 при успешном обновлении
+                    return Results.Ok();
                 }
                 catch (Exception ex)
                 {
-                    // Логируем исключение для диагностики
                     Console.Error.WriteLine($"Error occurred while updating travel tags: {ex.Message}");
-                    return Results.StatusCode(500); // В случае ошибки возвращаем 500
+                    return Results.StatusCode(500);
                 }
-            });      //Регитрация
+            });
             app.MapPost("/api/register", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService) =>
             {
                 // Проверка, существует ли пользователь с таким email
