@@ -228,9 +228,8 @@ namespace ApiForTravel
             {
                 try
                 {
-                    var travel = await db.Travels
-                        .Include(t => t.Tags) // Важно: загружаем связанные теги
-                        .FirstOrDefaultAsync(t => t.Id == travelId);
+                    // Загружаем travel (без Include, так как Tags - это обычное свойство)
+                    var travel = await db.Travels.FindAsync(travelId);
 
                     if (travel == null)
                     {
@@ -241,11 +240,10 @@ namespace ApiForTravel
                         return Results.NotFound();
                     }
 
-                    // Обновляем теги (если tags null, путешествие не будет отображаться в ленте)
+                    // Обновляем теги
                     travel.Tags = request.Tags ?? new List<string>();
 
-                    // Логируем, что обновлены теги
-                    Console.WriteLine($"Updating tags for travelId {travelId}. New Tags: {string.Join(", ", travel.Tags)}");
+                    Console.WriteLine($"Updated tags for travelId {travelId}. New Tags: {string.Join(", ", travel.Tags)}");
 
                     await db.SaveChangesAsync();
                     return Results.Ok();
