@@ -241,19 +241,11 @@ namespace ApiForTravel
                         return Results.NotFound();
                     }
 
-                    // Инициализируем коллекцию Tags, если она null
-                    if (travel.Tags == null)
-                    {
-                        travel.Tags = new List<string>(); 
-                    }
+                    // Обновляем теги (если tags null, путешествие не будет отображаться в ленте)
+                    travel.Tags = request.Tags ?? new List<string>();
 
-                    // Очистка и обновление тегов
-                    travel.Tags.Clear();
-
-                    if (request.Tags != null && request.Tags.Any())
-                    {
-                        travel.Tags.AddRange(request.Tags);
-                    }
+                    // Логируем, что обновлены теги
+                    Console.WriteLine($"Updating tags for travelId {travelId}. New Tags: {string.Join(", ", travel.Tags)}");
 
                     await db.SaveChangesAsync();
                     return Results.Ok();
