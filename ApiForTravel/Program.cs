@@ -526,6 +526,7 @@ namespace ApiForTravel
                         t.Title,
                         t.Date,
                         t.UserId,
+                        t.Tags,
                         Points = t.Points.Select(p => new
                         {
                             p.Id,
