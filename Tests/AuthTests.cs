@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Net;
-using System.Text;
 using FluentAssertions;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 using ApiForTravel.Db;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -31,7 +26,7 @@ namespace Tests
             await _dbContext.Database.EnsureDeletedAsync();
             _dbContext.Dispose();
         }
-
+        // Проверяет успешную регистрацию нового пользователя и получение access-токена.
         [Fact]
         public async Task Register_ValidUser_ReturnsOk()
         {
@@ -54,7 +49,7 @@ namespace Tests
             data["AccessToken"].Should().NotBeNull();
             data["Email"]!.ToString().Should().Be(request.Email);
         }
-
+        // Проверяет, что повторная регистрация пользователя с теми же данными возвращает 409 Conflict.
         [Fact]
         public async Task Register_ExistingUser_ReturnsConflict()
         {
@@ -73,11 +68,14 @@ namespace Tests
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         }
-
+        // Проверяет успешный вход пользователя с корректными учетными данными.
         [Fact]
         public async Task Login_ValidCredentials_ReturnsTokens()
         {
-            // Arrange
+            // Убедимся, что база создана
+            await _dbContext.Database.EnsureCreatedAsync();
+
+            // Arrange — сначала регистрируем пользователя
             var registerRequest = new
             {
                 Email = "login@example.com",
@@ -85,7 +83,18 @@ namespace Tests
                 Username = "loginuser"
             };
 
-            await _client.PostAsJsonAsync("/api/register", registerRequest);
+            var registerResponse = await _client.PostAsJsonAsync("/api/register", registerRequest);
+
+            // Проверяем, что регистрация прошла успешно
+            registerResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var registerContent = await registerResponse.Content.ReadFromJsonAsync<JsonObject>();
+            registerContent.Should().NotBeNull();
+            registerContent["AccessToken"].Should().NotBeNull();
+
+            // Подождать немного, если база async (например, SQLite in-memory может лагать)
+            await _dbContext.SaveChangesAsync(); // Гарантируем сохранение
+            await Task.Delay(50); // небольшой запас времени
 
             var loginRequest = new
             {
@@ -93,7 +102,7 @@ namespace Tests
                 Password = "Test12312"
             };
 
-            // Act
+            // Act — логинимся
             var response = await _client.PostAsJsonAsync("/api/login", loginRequest);
 
             // Assert
@@ -104,11 +113,9 @@ namespace Tests
             content["AccessToken"]?.GetValue<string>().Should().NotBeNullOrEmpty();
             content["Email"]?.GetValue<string>().Should().Be("login@example.com");
             content["Username"]?.GetValue<string>().Should().Be("loginuser");
-
-            // Debug (если нужно)
-            // Console.WriteLine($"AccessToken: {content["AccessToken"]}");
         }
 
+        // Проверяет, что вход с неверным паролем возвращает 409 Conflict.
         [Fact]
         public async Task Login_WrongPassword_ReturnsConflict()
         {
@@ -135,7 +142,7 @@ namespace Tests
         }
 
 
-
+        // Проверяет, что попытка входа с несуществующим email возвращает 404 Not Found.
         [Fact]
         public async Task Login_NonExistingUser_ReturnsNotFound()
         {
@@ -151,6 +158,28 @@ namespace Tests
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        //система возвращает ошибку 400 Bad Request, если email не соответствует правильному формату
+        [Fact]
+        public async Task Register_InvalidEmail_ReturnsBadRequest()
+        {
+            // Arrange — попытка зарегистрировать пользователя с некорректным email
+            var request = new
+            {
+                Email = "invalid-email",  // Некорректный email
+                Password = "Test123!",
+                Username = "invaliduser"
+            };
+
+            // Act — отправляем запрос на регистрацию
+            var response = await _client.PostAsJsonAsync("/api/register", request);
+
+            // Assert — проверяем, что статус код BadRequest
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+            // Получаем содержимое ответа как строку (предполагаем, что сервер вернет сообщение об ошибке в виде строки)
+            var content = await response.Content.ReadAsStringAsync();
+            content.Should().Contain("Неверный формат email."); // Предположим, что сообщение об ошибке будет содержать эту строку
         }
     }
 }

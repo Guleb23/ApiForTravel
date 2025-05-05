@@ -28,7 +28,7 @@ namespace Tests
             _db = scope.ServiceProvider.GetRequiredService<ApplicationDBContext>();
         }
 
-
+        // Проверяет, что при попытке поделиться несуществующим маршрутом возвращается 404 Not Found.
         [Fact]
         public async Task ShareTravel_InvalidId_ReturnsNotFound()
         {
@@ -38,7 +38,7 @@ namespace Tests
 
             response.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
         }
-
+        // Проверяет, что при внутренней ошибке базы данных возвращается 500 Internal Server Error.
         [Fact]
         public async Task ShareTravel_DbFailure_Returns500()
         {

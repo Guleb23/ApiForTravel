@@ -52,7 +52,7 @@ namespace Tests
             await _dbContext.SaveChangesAsync();
             return user.Id;
         }
-
+        // Проверяет успешное создание маршрута с валидными данными.
         [Fact]
         public async Task CreateTravel_ValidRequest_ReturnsTravel()
         {
@@ -88,7 +88,7 @@ namespace Tests
             travel.Points.Should().HaveCount(1);
             travel.Points[0].Name.Should().Be("Point 1");
         }
-
+        // Проверяет, что создание маршрута для несуществующего пользователя возвращает 404.
         [Fact]
         public async Task CreateTravel_UserNotFound_ReturnsNotFound()
         {
@@ -119,7 +119,7 @@ namespace Tests
             var content = await response.Content.ReadAsStringAsync();
             content.Should().Contain("User with id");
         }
-
+        // Проверяет, что попытка создать маршрут без точек возвращает ошибку 400.
         [Fact]
         public async Task CreateTravel_NoPoints_ReturnsBadRequest()
         {
@@ -139,7 +139,7 @@ namespace Tests
             var content = await response.Content.ReadAsStringAsync();
             content.Should().Contain("At least one point is required");
         }
-
+        // Проверяет, что при некорректном формате времени отправления возвращается ошибка 400.
         [Fact]
         public async Task CreateTravel_InvalidDepartureTime_ReturnsBadRequest()
         {
@@ -169,7 +169,7 @@ namespace Tests
             var content = await response.Content.ReadAsStringAsync();
             content.Should().Contain("Invalid departure time format");
         }
-
+        // Проверяет, что можно получить список маршрутов пользователя по его ID.
         [Fact]
         public async Task GetRoutes_ByUserId_ReturnsRoutes()
         {
@@ -207,7 +207,7 @@ namespace Tests
             json.Should().NotBeNullOrEmpty();
             json[0]["Title"]!.ToString().Should().Be("Sample Travel");
         }
-
+        // Проверяет, что можно получить маршрут по его ID.
         [Fact]
         public async Task GetTravel_ById_ReturnsTravel()
         {
@@ -229,7 +229,7 @@ namespace Tests
             json.Should().ContainSingle();
             json[0]["Title"]!.ToString().Should().Be("Specific Travel");
         }
-
+        // Проверяет, что можно получить точки маршрута по ID маршрута.
         [Fact]
         public async Task GetPoints_ByTravelId_ReturnsPoints()
         {
@@ -263,7 +263,7 @@ namespace Tests
             points[0]["Name"]!.ToString().Should().Be("Point A");
         }
 
-        
+        // Проверяет, что HTTP-ответ успешен, иначе выбрасывает исключение с сообщением об ошибке.
         private async Task AssertSuccessResponse(HttpResponseMessage response)
         {
             if (!response.IsSuccessStatusCode)

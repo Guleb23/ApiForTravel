@@ -256,6 +256,13 @@ namespace ApiForTravel
             });
             app.MapPost("/api/register", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService) =>
             {
+                // Проверка на корректность email с использованием регулярного выражения
+                var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+                if (!emailRegex.IsMatch(user.Email))
+                {
+                    return Results.BadRequest("Неверный формат email.");
+                }
+
                 // Проверка, существует ли пользователь с таким email
                 var oldUser = ctx.Users.FirstOrDefault(u => u.Email == user.Email);
                 if (oldUser != null)
@@ -269,13 +276,13 @@ namespace ApiForTravel
                     Email = user.Email,
                     RefreshToken = "0",
                     Username = user.Username
-
-                     // Хеширование пароля
                 };
+
+                // Хеширование пароля
                 newUser.Password = hasher.HashPassword(newUser, user.Password);
+
                 // Сохранение пользователя в базу данных
                 ctx.Users.Add(newUser);
-                
                 await ctx.SaveChangesAsync(); // Сохраняем пользователя, чтобы получить Id
 
                 // Генерация токенов
@@ -312,6 +319,7 @@ namespace ApiForTravel
 
                 return Results.Ok(JsonObject);
             });
+
             //Авторизация
             app.MapPost("/api/login", async (HttpContext context, ApplicationDBContext ctx, [FromBody] UserDTO user, PasswordHasher hasher, TokenService tokenService, AuthService _authService) =>
             {
