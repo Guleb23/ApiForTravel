@@ -3,11 +3,13 @@ using ApiForTravel.Models;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.VisualStudio.TestPlatform.Utilities;
 using System;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Xunit.Abstractions;
 
 namespace Tests
 {
@@ -16,11 +18,11 @@ namespace Tests
         private readonly HttpClient _client;
         private readonly ApplicationDBContext _dbContext;
         private int _testUserId;
-
-        public TravelsTests(CustomWebApplicationFactory factory)
+        private readonly ITestOutputHelper _output;
+        public TravelsTests(CustomWebApplicationFactory factory, ITestOutputHelper output)
         {
             _client = factory.CreateClient();
-
+            _output = output;
             // Создаем отдельный scope для контекста
             var scope = factory.Services.CreateScope();
             _dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDBContext>();
@@ -262,6 +264,89 @@ namespace Tests
             points.Should().ContainSingle();
             points[0]["Name"]!.ToString().Should().Be("Point A");
         }
+
+        [Fact]
+        public async Task CreateTravel_WithPhoto_SavesPhoto()
+        {
+            // Arrange
+            var jpegBytes = new byte[]
+            {
+        0xFF, 0xD8,
+        0xFF, 0xE0, 0x00, 0x10,
+        0x4A, 0x46, 0x49, 0x46, 0x00,
+        0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+        0xFF, 0xD9
+            };
+            var photoBytes = Convert.ToBase64String(jpegBytes);
+            var base64Photo = $"data:image/jpeg;base64,{photoBytes}";
+
+            var request = new
+            {
+                Title = "Travel with Photo",
+                Date = DateTime.UtcNow.ToString("o"),
+                Points = new[]
+                {
+            new
+            {
+                Name = "Photo Point",
+                Address = "With Image",
+                Coordinates = new { Lat = 50.0, Lon = 50.0 },
+                Type = "attraction",
+                DepartureTime = "12:00:00",
+                note = "testNote",
+                Photos = new[]
+                {
+                    new
+                    {
+                        FileName = "test.jpg",
+                        Base64Content = base64Photo
+                    }
+                }
+            }
+        }
+            };
+
+            // Act
+            var response = await _client.PostAsJsonAsync($"/api/users/{_testUserId}/travels", request);
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var travel = await response.Content.ReadFromJsonAsync<TravelModel>();
+            travel.Should().NotBeNull();
+            travel.Points.Should().ContainSingle();
+
+            var point = travel.Points.First();
+            point.Photos.Should().ContainSingle();
+
+            var savedPhoto = point.Photos.First();
+
+            savedPhoto.FilePath.Should().MatchRegex(@"^uploads[\\/].+");
+
+            // Построение полного пути к файлу
+            var currentDir = Directory.GetCurrentDirectory();
+            _output.WriteLine($"Current Directory: {currentDir}");
+
+            // Поднимаемся 4 уровня вверх, чтобы выйти из bin\Debug\net8.0 к корню решения
+            var solutionRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", ".."));
+            _output.WriteLine($"Solution Root: {solutionRoot}");
+
+            // Путь к папке ApiForTravel в корне решения
+            var apiProjectPath = Path.Combine(solutionRoot, "ApiForTravel");
+            _output.WriteLine($"API Project Path: {apiProjectPath}");
+
+            // Нормализуем путь файла
+            var normalizedFilePath = savedPhoto.FilePath.Replace("/", Path.DirectorySeparatorChar.ToString())
+                                                       .Replace("\\", Path.DirectorySeparatorChar.ToString());
+
+            // Итоговый путь к сохранённому файлу
+            var savedPath = Path.Combine(apiProjectPath, normalizedFilePath);
+            _output.WriteLine($"Saved Photo Path: {savedPath}");
+
+            // Проверяем наличие файла
+            File.Exists(savedPath).Should().BeTrue();
+        }
+
 
         // Проверяет, что HTTP-ответ успешен, иначе выбрасывает исключение с сообщением об ошибке.
         private async Task AssertSuccessResponse(HttpResponseMessage response)
